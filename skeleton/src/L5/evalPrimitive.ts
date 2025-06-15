@@ -31,24 +31,40 @@ export const applyPrimitive = (proc: PrimOp, args: Value[]): Result<Value> =>
     makeFailure(`Bad primitive op: ${proc.op}`);
 
 const minusPrim = (args: Value[]): Result<number> => {
-    // TODO complete
-    const x = args[0], y = args[1];
-    if (isNumber(x) && isNumber(y)) {
-        return makeOk(x - y);
+    if (args.length === 1) {
+        const x = args[0];
+        if (isNumber(x)) {
+            return makeOk(-x);
+        } else {
+            return makeFailure(`Type error: - expects number ${format(args)}`);
+        }
+    } else if (args.length === 2) {
+        const x = args[0], y = args[1];
+        if (isNumber(x) && isNumber(y)) {
+            return makeOk(x - y);
+        } else {
+            return makeFailure(`Type error: - expects numbers ${format(args)}`);
+        }
     } else {
-        return makeFailure(`Type error: - expects numbers ${format(args)}`)
+        return makeFailure(`Type error: - expects 1 or 2 arguments, got ${args.length}`);
     }
-}
+};
 
 const divPrim = (args: Value[]): Result<number> => {
-    // TODO complete
+    if (args.length !== 2) {
+        return makeFailure(`Type error: / expects exactly 2 arguments, got ${args.length}`);
+    }
+    
     const x = args[0], y = args[1];
     if (isNumber(x) && isNumber(y)) {
+        if (y === 0) {
+            return makeFailure(`Division by zero error`);
+        }
         return makeOk(x / y);
     } else {
-        return makeFailure(`Type error: / expects numbers ${format(args)}`)
+        return makeFailure(`Type error: / expects numbers ${format(args)}`);
     }
-}
+};
 
 const eqPrim = (args: Value[]): boolean => {
     const x = args[0], y = args[1];
