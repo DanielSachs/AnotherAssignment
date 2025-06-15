@@ -79,6 +79,7 @@ export const expComponents = (e: Exp): CExp[] =>
     isAppExp(e) ? [e.rator, ...e.rands] :
     isSetExp(e) ? [e.val] :
     isDefineExp(e) ? [e.val] :
+    isLitExp(e) ? [] : // LitExp has no components
     []; // Atomic expressions have no components
 
 // Type definitions
@@ -166,7 +167,7 @@ const isSpecialFormKeyword = (x: string): x is SpecialFormKeyword =>
 */
 export type PrimOpKeyword = "+" | "-" | "*" | "/" | ">" | "<" | "=" | "not" | "and" | "or" | "eq?" | "string=?" | 
         "cons" | "car" | "cdr" | "list" | "pair?" | "list?" | "number?" | "boolean?" | "symbol?" | "string?" |
-        "display" | "newline";
+        "display" | "newline" | "cons" | "car" | "cdr";
 const isPrimOpKeyword = (x: string): x is PrimOpKeyword =>
     ["+", "-", "*", "/", ">", "<", "=", "not", "and", "or", 
      "eq?", "string=?", "cons", "car", "cdr", "list", "pair?",
