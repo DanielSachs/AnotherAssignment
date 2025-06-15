@@ -3,16 +3,19 @@
 import { equals, map, zipWith } from 'ramda';
 import { isAppExp, isBoolExp, isDefineExp, isIfExp, isLetrecExp, isLetExp, isNumExp,
          isPrimOp, isProcExp, isProgram, isStrExp, isVarRef, parseL5Exp, unparse,
+         isSetExp, isLitExp, SetExp, LitExp, VarRef,
          AppExp, BoolExp, DefineExp, Exp, IfExp, LetrecExp, LetExp, NumExp,
          Parsed, PrimOp, ProcExp, Program, StrExp } from "./L5-ast";
 import { applyTEnv, makeEmptyTEnv, makeExtendTEnv, TEnv } from "./TEnv";
 import { isProcTExp, makeBoolTExp, makeNumTExp, makeProcTExp, makeStrTExp, makeVoidTExp,
          parseTE, unparseTExp,
+         isPairTExp, makePairTExp, PairTExp,
          BoolTExp, NumTExp, StrTExp, TExp, VoidTExp } from "./TExp";
 import { isEmpty, allT, first, rest, NonEmptyList, List, isNonEmptyList } from '../shared/list';
 import { Result, makeFailure, bind, makeOk, zipWithResult } from '../shared/result';
 import { parse as p } from "../shared/parser";
 import { format } from '../shared/format';
+import { isSymbolSExp, isCompoundSExp, SExpValue } from './L5-value';
 
 // Purpose: Check that type expressions are equivalent
 // as part of a fully-annotated type check process of exp.
@@ -299,4 +302,23 @@ export const typeofLit = (exp: LitExp, tenv: TEnv): Result<TExp> => {
     }
     
     return makeFailure(`Unsupported literal type: ${typeof val}`);
+};
+
+const typeofSExp = (sexp: SExpValue): Result<TExp> => {
+    if (typeof sexp === 'number') {
+        return makeOk(makeNumTExp());
+    } else if (typeof sexp === 'boolean') {
+        return makeOk(makeBoolTExp());
+    } else if (typeof sexp === 'string') {
+        return makeOk(makeStrTExp());
+    } else if (isSymbolSExp(sexp)) {
+        return parseTE('literal');
+    } else if (isCompoundSExp(sexp)) {
+        return bind(typeofSExp(sexp.val1), (t1: TExp) =>
+               bind(typeofSExp(sexp.val2), (t2: TExp) =>
+                   bind(unparseTExp(t1), (t1str: string) =>
+                       bind(unparseTExp(t2), (t2str: string) =>
+                           parseTE(`(Pair ${t1str} ${t2str})`)))));
+    }
+    return makeFailure(`Unsupported S-expression type: ${typeof sexp}`);
 };
