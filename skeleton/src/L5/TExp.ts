@@ -159,6 +159,7 @@ export const parseTExp = (texp: Sexp): Result<TExp> =>
     (texp === "boolean") ? makeOk(makeBoolTExp()) :
     (texp === "void") ? makeOk(makeVoidTExp()) :
     (texp === "string") ? makeOk(makeStrTExp()) :
+    (texp === "literal") ? makeOk(makeTVar("literal")) :
     isString(texp) ? makeOk(makeTVar(texp)) :
     isArray(texp) ? parseCompoundTExp(texp) :
     makeFailure(`Unexpected TExp - ${format(texp)}`);
@@ -229,7 +230,7 @@ export const unparseTExp = (te: TExp): Result<string> => {
         isNonEmptyTupleTExp(x) ? unparseTuple(x.TEs) :
         isPairTExp(x) ? bind(unparseTExp(x.left), (leftStr: string) =>
                 mapv(unparseTExp(x.right), (rightStr: string) =>
-                    `(Pair ${leftStr} ${rightStr})`)) :
+                    [`Pair`, leftStr, rightStr])) :
         x === undefined ? makeFailure("Undefined TVar") :
         x;
 
@@ -270,7 +271,18 @@ const matchTVarsInTE = <T1, T2>(te1: TExp, te2: TExp,
     (isTVar(te1) || isTVar(te2)) ? matchTVarsinTVars(tvarDeref(te1), tvarDeref(te2), succ, fail) :
     (isAtomicTExp(te1) || isAtomicTExp(te2)) ?
         ((isAtomicTExp(te1) && isAtomicTExp(te2) && eqAtomicTExp(te1, te2)) ? succ([]) : fail()) :
+    (isPairTExp(te1) && isPairTExp(te2)) ? matchTVarsInPairs(te1, te2, succ, fail) :
     matchTVarsInTProcs(te1, te2, succ, fail);
+
+// Helper function for matching pairs
+const matchTVarsInPairs = <T1, T2>(te1: PairTExp, te2: PairTExp,
+                                   succ: (mapping: Array<Pair<TVar, TVar>>) => T1,
+                                   fail: () => T2): T1 | T2 =>
+    matchTVarsInTE(te1.left, te2.left,
+                   (subLeft) => matchTVarsInTE(te1.right, te2.right,
+                                               (subRight) => succ(concat(subLeft, subRight)),
+                                               fail),
+                   fail);
 
 // te1 and te2 are the result of tvarDeref
 const matchTVarsinTVars = <T1, T2>(te1: TExp, te2: TExp,
