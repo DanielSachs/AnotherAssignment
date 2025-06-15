@@ -46,12 +46,17 @@ export type AtomicTExp = NumTExp | BoolTExp | StrTExp | VoidTExp;
 export const isAtomicTExp = (x: any): x is AtomicTExp =>
     isNumTExp(x) || isBoolTExp(x) || isStrTExp(x) || isVoidTExp(x);
 
-export type CompoundTExp = ProcTExp | TupleTExp;
+export type CompoundTExp = ProcTExp | TupleTExp | PairTExp;
 export const isCompoundTExp = (x: any): x is CompoundTExp => isProcTExp(x) || isTupleTExp(x);
 
-export type NonTupleTExp = AtomicTExp | ProcTExp | TVar;
+export type NonTupleTExp = AtomicTExp | ProcTExp | TVar | PairTExp;
 export const isNonTupleTExp = (x: any): x is NonTupleTExp =>
     isAtomicTExp(x) || isProcTExp(x) || isTVar(x);
+
+export type PairTExp = { tag: "PairTExp"; left: TExp; right: TExp; };
+export const makePairTExp = (left: TExp, right: TExp): PairTExp =>
+    ({tag: "PairTExp", left: left, right: right});
+export const isPairTExp = (x: any): x is PairTExp => x.tag === "PairTExp";
 
 export type NumTExp = { tag: "NumTExp" };
 export const makeNumTExp = (): NumTExp => ({tag: "NumTExp"});
@@ -163,7 +168,15 @@ export const parseTExp = (texp: Sexp): Result<TExp> =>
 ;; expected exactly one -> in the list
 ;; We do not accept (a -> b -> c) - must parenthesize
 */
-const parseCompoundTExp = (texps: Sexp[]): Result<ProcTExp> => {
+const parseCompoundTExp = (texps: Sexp[]): Result<TExp> => {
+    // Check for Pair type: (Pair T1 T2)
+    if (texps.length === 3 && texps[0] === 'Pair') {
+        return bind(parseTExp(texps[1]), (leftTE: TExp) =>
+               mapv(parseTExp(texps[2]), (rightTE: TExp) =>
+                    makePairTExp(leftTE, rightTE)));
+    }
+    
+    // Original procedure type parsing
     const pos = texps.indexOf('->');
     return (pos === -1)  ? makeFailure(`Procedure type expression without -> - ${format(texps)}`) :
            (pos === 0) ? makeFailure(`No param types in proc texp - ${format(texps)}`) :
@@ -214,6 +227,9 @@ export const unparseTExp = (te: TExp): Result<string> => {
                                 [...paramTEs, '->', returnTE])) :
         isEmptyTupleTExp(x) ? makeOk("Empty") :
         isNonEmptyTupleTExp(x) ? unparseTuple(x.TEs) :
+        isPairTExp(x) ? bind(unparseTExp(x.left), (leftStr: string) =>
+                mapv(unparseTExp(x.right), (rightStr: string) =>
+                    `(Pair ${leftStr} ${rightStr})`)) :
         x === undefined ? makeFailure("Undefined TVar") :
         x;
 
