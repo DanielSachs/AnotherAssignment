@@ -52,7 +52,8 @@ export const typeofExp = (exp: Parsed, tenv: TEnv): Result<TExp> =>
     isLetrecExp(exp) ? typeofLetrec(exp, tenv) :
     isDefineExp(exp) ? typeofDefine(exp, tenv) :
     isProgram(exp) ? typeofProgram(exp, tenv) :
-    // TODO: isSetExp(exp) isLitExp(exp)
+    isSetExp(exp) ? typeofSet(exp, tenv) :
+    isLitExp(exp) ? typeofLit(exp, tenv) :
     makeFailure(`Unknown type: ${format(exp)}`);
 
 // Purpose: Compute the type of a sequence of expressions
@@ -79,7 +80,6 @@ const numOpTExp = parseTE('(number * number -> number)');
 const numCompTExp = parseTE('(number * number -> boolean)');
 const boolOpTExp = parseTE('(boolean * boolean -> boolean)');
 
-// Todo: cons, car, cdr, list
 export const typeofPrim = (p: PrimOp): Result<TExp> =>
     (p.op === '+') ? numOpTExp :
     (p.op === '-') ? numOpTExp :
@@ -105,6 +105,7 @@ export const typeofPrim = (p: PrimOp): Result<TExp> =>
     (p.op === 'cons') ? parseTE('(T1 * T2 -> (Pair T1 T2))') :
     (p.op === 'car') ? parseTE('((Pair T1 T2) -> T1)') :
     (p.op === 'cdr') ? parseTE('((Pair T1 T2) -> T2)') :
+    (p.op === 'list') ? parseTE('(T* -> (List T))') :
     makeFailure(`Primitive not yet implemented: ${p.op}`);
 
 // Purpose: compute the type of an if-exp
@@ -209,16 +210,15 @@ export const typeofLetrec = (exp: LetrecExp, tenv: TEnv): Result<TExp> => {
 };
 
 // Typecheck a full program
-// TODO: Thread the TEnv (as in L1)
 
 // Purpose: compute the type of a define
 // Typing rule:
 //   (define (var : texp) val)
 // TODO - write the true definition
 export const typeofDefine = (exp: DefineExp, tenv: TEnv): Result<VoidTExp> => {
-    // Typing rule:
+    // Typing rule: 
     // (define (var : texp) val)
-    // If type<val>(tenv) = t and type<var> = t
+    // If type<val>(tenv) = t and var.texp = t
     // then type<(define (var : texp) val)>(tenv) = void
     
     const valTE = typeofExp(exp.val, tenv);
@@ -239,7 +239,7 @@ export const typeofProgram = (exp: Program, tenv: TEnv): Result<TExp> => {
         return makeFailure("Empty program");
     }
     
-    // Helper function to process expressions sequentially, threading environment for define expressions
+    // Thread the TEnv (as in L1) - extend environment after each define
     const processExpressions = (expressions: Exp[], currentTEnv: TEnv): Result<TExp> => {
         if (expressions.length === 0) {
             return makeFailure("No expressions to process");
@@ -248,16 +248,12 @@ export const typeofProgram = (exp: Program, tenv: TEnv): Result<TExp> => {
         const firstExp = expressions[0];
         const restExps = expressions.slice(1);
         
-        // Type check the first expression
         const firstType = typeofExp(firstExp, currentTEnv);
         
         if (restExps.length === 0) {
-            // This is the last expression, return its type
             return firstType;
         } else {
-            // More expressions to process
             return bind(firstType, (_: TExp) => {
-                // If this is a define expression, extend the environment
                 const newTEnv = isDefineExp(firstExp) 
                     ? makeExtendTEnv([firstExp.var.var], [firstExp.var.texp], currentTEnv)
                     : currentTEnv;
@@ -268,4 +264,39 @@ export const typeofProgram = (exp: Program, tenv: TEnv): Result<TExp> => {
     };
     
     return processExpressions(exps, tenv);
+};
+
+export const typeofSet = (exp: SetExp, tenv: TEnv): Result<TExp> => {
+    const varTE = applyTEnv(tenv, exp.var.var);
+    const valTE = typeofExp(exp.val, tenv);
+    const constraint = bind(varTE, (varTE: TExp) =>
+                           bind(valTE, (valTE: TExp) =>
+                               checkEqualType(varTE, valTE, exp)));
+    return bind(constraint, _ => makeOk(makeVoidTExp()));
+};
+
+export const typeofLit = (exp: LitExp, tenv: TEnv): Result<TExp> => {
+    const val = exp.val;
+    
+    if (typeof val === 'number') {
+        return parseTE('literal');
+    } else if (typeof val === 'boolean') {
+        return makeOk(makeBoolTExp());
+    } else if (typeof val === 'string') {
+        return makeOk(makeStrTExp());
+    }
+    
+    if (isSymbolSExp(val)) {
+        return parseTE('literal');
+    }
+    
+    if (isCompoundSExp(val)) {
+        return bind(typeofSExp(val.val1), (t1: TExp) =>
+               bind(typeofSExp(val.val2), (t2: TExp) =>
+                   bind(unparseTExp(t1), (t1str: string) =>
+                       bind(unparseTExp(t2), (t2str: string) =>
+                           parseTE(`(Pair ${t1str} ${t2str})`)))));
+    }
+    
+    return makeFailure(`Unsupported literal type: ${typeof val}`);
 };
