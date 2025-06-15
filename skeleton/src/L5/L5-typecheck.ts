@@ -102,6 +102,9 @@ export const typeofPrim = (p: PrimOp): Result<TExp> =>
     (p.op === 'string=?') ? parseTE('(T1 * T2 -> boolean)') :
     (p.op === 'display') ? parseTE('(T -> void)') :
     (p.op === 'newline') ? parseTE('(Empty -> void)') :
+    (p.op === 'cons') ? parseTE('(T1 * T2 -> (Pair T1 T2))') :
+    (p.op === 'car') ? parseTE('((Pair T1 T2) -> T1)') :
+    (p.op === 'cdr') ? parseTE('((Pair T1 T2) -> T2)') :
     makeFailure(`Primitive not yet implemented: ${p.op}`);
 
 // Purpose: compute the type of an if-exp
@@ -213,12 +216,56 @@ export const typeofLetrec = (exp: LetrecExp, tenv: TEnv): Result<TExp> => {
 //   (define (var : texp) val)
 // TODO - write the true definition
 export const typeofDefine = (exp: DefineExp, tenv: TEnv): Result<VoidTExp> => {
-    // return Error("TODO");
-    return makeOk(makeVoidTExp());
+    // Typing rule:
+    // (define (var : texp) val)
+    // If type<val>(tenv) = t and type<var> = t
+    // then type<(define (var : texp) val)>(tenv) = void
+    
+    const valTE = typeofExp(exp.val, tenv);
+    const varTE = exp.var.texp;
+    
+    const constraint = bind(valTE, (valTE: TExp) =>
+                           checkEqualType(valTE, varTE, exp));
+    
+    return bind(constraint, _ => makeOk(makeVoidTExp()));
 };
 
 // Purpose: compute the type of a program
 // Typing rule:
 // TODO - write the true definition
-export const typeofProgram = (exp: Program, tenv: TEnv): Result<TExp> =>
-    makeFailure("TODO");
+export const typeofProgram = (exp: Program, tenv: TEnv): Result<TExp> => {
+    const exps = exp.exps;
+    if (exps.length === 0) {
+        return makeFailure("Empty program");
+    }
+    
+    // Helper function to process expressions sequentially, threading environment for define expressions
+    const processExpressions = (expressions: Exp[], currentTEnv: TEnv): Result<TExp> => {
+        if (expressions.length === 0) {
+            return makeFailure("No expressions to process");
+        }
+        
+        const firstExp = expressions[0];
+        const restExps = expressions.slice(1);
+        
+        // Type check the first expression
+        const firstType = typeofExp(firstExp, currentTEnv);
+        
+        if (restExps.length === 0) {
+            // This is the last expression, return its type
+            return firstType;
+        } else {
+            // More expressions to process
+            return bind(firstType, (_: TExp) => {
+                // If this is a define expression, extend the environment
+                const newTEnv = isDefineExp(firstExp) 
+                    ? makeExtendTEnv([firstExp.var.var], [firstExp.var.texp], currentTEnv)
+                    : currentTEnv;
+                
+                return processExpressions(restExps, newTEnv);
+            });
+        }
+    };
+    
+    return processExpressions(exps, tenv);
+};
